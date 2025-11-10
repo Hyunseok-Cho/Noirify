@@ -1,0 +1,5 @@
+QMainWindow { background: #1b1b1b; }
+QMenuBar { background: #202020; color: #ddd; }
+QMenuBar::item:selected { background: #2a2a2a; }
+QTableWidget { background: #1f1f1f; color: #ddd; gridline-color: #333; }
+QHeaderView::section { background: #2a2a2a; color: #ddd; border: none; padding: 6px; }
