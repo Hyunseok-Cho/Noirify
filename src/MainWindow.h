@@ -21,7 +21,6 @@ private slots:
     void onResultSourceChanged(int idx);
 
 private:
-    // UI 초기화/헬퍼
     void setupUi();
     void loadImageFile(const QString& path);
     void setOriginal(const QImage& img);
@@ -29,7 +28,6 @@ private:
     void scaleAndShow(QLabel* label, const QImage& img);
     void refreshPerfTable();
 
-    // 현재 상태
     QImage original_;
     QImage cppImg_, asmImg_, pyImg_;
     qint64 cppMs_ = 0, asmMs_ = 0, pyMs_ = 0;
@@ -37,12 +35,10 @@ private:
     QString asmNotes_ = "placeholder (not wired yet)";
     QString pyNotes_  = "placeholder (not wired yet)";
 
-    // 위젯
     QLabel* originalView_ = nullptr;
     QLabel* processedView_ = nullptr;
     QTableWidget* perfTable_ = nullptr;
     QComboBox* resultSource_ = nullptr;
 
-    // 유틸: 플레이스홀더 처리 (임시)
     QImage placeholderGrayscale(const QImage& src) const;
 };

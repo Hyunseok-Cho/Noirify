@@ -111,14 +111,12 @@ void MainWindow::dropEvent(QDropEvent* e) {
 void MainWindow::resizeEvent(QResizeEvent* e) {
     QMainWindow::resizeEvent(e);
     if (!original_.isNull())  scaleAndShow(originalView_, original_);
-    // 현재 표시 중인 결과를 다시 그려주기
     if (!cppImg_.isNull() && resultSource_->currentIndex()==0)      setProcessed(cppImg_);
     else if (!asmImg_.isNull() && resultSource_->currentIndex()==1) setProcessed(asmImg_);
     else if (!pyImg_.isNull()  && resultSource_->currentIndex()==2) setProcessed(pyImg_);
 }
 
 QImage MainWindow::placeholderGrayscale(const QImage& src) const {
-    // 프로토타입용 간단 그레이: 실제 비교는 processors로 대체
     return src.convertToFormat(QImage::Format_Grayscale8);
 }
 
@@ -128,8 +126,6 @@ void MainWindow::onRunAll() {
         return;
     }
 
-    // === 프로토타입 플레이스홀더 ===
-    // 나중에 여기서 C++/ASM/Python 실제 처리기를 호출하면 됨.
     QElapsedTimer t;
 
     t.start();
@@ -138,18 +134,17 @@ void MainWindow::onRunAll() {
     cppNotes_ = "placeholder (replace with C++ processor)";
 
     t.restart();
-    asmImg_ = cppImg_;  // 당장은 동일
+    asmImg_ = cppImg_;
     asmMs_  = t.elapsed();
     asmNotes_ = "placeholder (replace with ASM processor)";
 
     t.restart();
-    pyImg_  = cppImg_;  // 당장은 동일
+    pyImg_  = cppImg_;
     pyMs_   = t.elapsed();
     pyNotes_ = "placeholder (replace with Python processor)";
 
     refreshPerfTable();
 
-    // 기본 표시: C++
     setProcessed(cppImg_);
     resultSource_->setCurrentIndex(0);
 }
@@ -175,7 +170,7 @@ void MainWindow::onResultSourceChanged(int idx) {
         case 0: if (!cppImg_.isNull()) setProcessed(cppImg_); break;
         case 1: if (!asmImg_.isNull()) setProcessed(asmImg_); break;
         case 2: if (!pyImg_.isNull())  setProcessed(pyImg_);  break;
-        case 3: { // Fastest
+        case 3: {
             qint64 best = cppMs_; QImage bestImg = cppImg_;
             if (asmMs_ >= 0 && (best <= 0 || (asmMs_ > 0 && asmMs_ < best))) { best = asmMs_; bestImg = asmImg_; }
             if (pyMs_  >= 0 && (best <= 0 || (pyMs_  > 0 && pyMs_  < best))) { best = pyMs_;  bestImg = pyImg_;  }
