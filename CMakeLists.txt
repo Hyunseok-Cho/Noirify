@@ -11,12 +11,13 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
-qt_add_executable(noirify
+qt_add_executable(Noirify
         src/main.cpp
         src/MainWindow.cpp
         src/MainWindow.h
+        resources/resources.qrc
 )
 
-target_link_libraries(noirify PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_link_libraries(Noirify PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
 
 
