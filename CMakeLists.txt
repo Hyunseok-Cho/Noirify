@@ -14,6 +14,8 @@ qt_add_executable(Noirify
         src/main.cpp
         src/MainWindow.cpp
         src/MainWindow.h
+        processors/cpp/noirify_cpp.cpp
+        processors/cpp/noirify_cpp.h
         resources/resources.qrc
 )
 

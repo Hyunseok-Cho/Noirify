@@ -11,6 +11,13 @@
 #include <QImageReader>
 #include <QElapsedTimer>
 #include <QPixmap>
+#include <QProcess>
+#include <QDir>
+#include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include "../processors/cpp/noirify_cpp.h"
+
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setupUi();
@@ -116,10 +123,6 @@ void MainWindow::resizeEvent(QResizeEvent* e) {
     else if (!pyImg_.isNull()  && resultSource_->currentIndex()==2) setProcessed(pyImg_);
 }
 
-QImage MainWindow::placeholderGrayscale(const QImage& src) const {
-    return src.convertToFormat(QImage::Format_Grayscale8);
-}
-
 void MainWindow::onRunAll() {
     if (original_.isNull()) {
         QMessageBox::information(this, "No image", "Open or drop an image first.");
@@ -129,9 +132,9 @@ void MainWindow::onRunAll() {
     QElapsedTimer t;
 
     t.start();
-    cppImg_ = placeholderGrayscale(original_);
+    cppImg_ = noirify_cpp::convertToGrayscale(original_);
     cppMs_  = t.elapsed();
-    cppNotes_ = "placeholder (replace with C++ processor)";
+    cppNotes_ = cppImg_.isNull() ? "C++ processor failed" : "C++ processor executed successfully";
 
     t.restart();
     asmImg_ = cppImg_;
@@ -140,8 +143,28 @@ void MainWindow::onRunAll() {
 
     t.restart();
     pyImg_  = cppImg_;
-    pyMs_   = t.elapsed();
-    pyNotes_ = "placeholder (replace with Python processor)";
+    pyMs_   = -1;
+
+    QTemporaryDir tempDir;
+    if (!tempDir.isValid()) {
+        pyNotes_ = "Python processor unavailable (no temp dir)";
+    } else {
+        const QString inputPath = tempDir.filePath("noirify_input.png");
+        const QString outputPath = tempDir.filePath("noirify_output.png");
+
+        if (!original_.save(inputPath)) {
+            pyNotes_ = "Python processor unavailable (cannot write input)";
+        } else {
+            if (runPythonProcessor(inputPath, outputPath, pyMs_, pyNotes_)) {
+                const QImage result(outputPath);
+                if (!result.isNull()) {
+                    pyImg_ = result;
+                } else {
+                    pyNotes_ = "Python processor output missing";
+                }
+            }
+        }
+    }
 
     refreshPerfTable();
 
@@ -162,6 +185,64 @@ void MainWindow::refreshPerfTable() {
         perfTable_->setItem(i, 1, new QTableWidgetItem(QString::number(rows[i].ms)));
         perfTable_->setItem(i, 2, new QTableWidgetItem(*rows[i].notes));
     }
+}
+
+QString MainWindow::pythonScriptPath() const {
+    const QDir appDir(QCoreApplication::applicationDirPath());
+    const QStringList candidates = {
+        QDir(appDir.filePath(".."))
+            .filePath("processors/python/noirify.py"),
+        appDir.filePath("processors/python/noirify.py")
+    };
+
+    for (const auto& candidate : candidates) {
+        if (QFile::exists(candidate)) {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+    return {};
+}
+
+bool MainWindow::runPythonProcessor(const QString& inputPath, const QString& outputPath,
+                                    qint64& elapsedMs, QString& notes) {
+    const QString script = pythonScriptPath();
+    if (script.isEmpty()) {
+        elapsedMs = 0;
+        notes = "Python processor script not found";
+        return false;
+    }
+
+    QProcess proc;
+    QStringList args{script, inputPath, outputPath};
+
+    QElapsedTimer timer;
+    timer.start();
+    proc.start("python3", args);
+
+    if (!proc.waitForFinished(30000)) {
+        proc.kill();
+        elapsedMs = timer.elapsed();
+        notes = "Python processor timed out";
+        return false;
+    }
+
+    elapsedMs = timer.elapsed();
+
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+        const QString stderrOut = QString::fromUtf8(proc.readAllStandardError()).trimmed();
+        notes = stderrOut.isEmpty()
+                ? QStringLiteral("Python processor failed")
+                : QStringLiteral("Python error: %1").arg(stderrOut);
+        return false;
+    }
+
+    if (!QFile::exists(outputPath)) {
+        notes = "Python processor did not create output";
+        return false;
+    }
+
+    notes = "Python processor executed successfully";
+    return true;
 }
 
 void MainWindow::onResultSourceChanged(int idx) {
