@@ -16,7 +16,60 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QPainter>
+#include <QApplication>
+#include <QEventLoop>
+#include <QToolButton>
 #include "../processors/cpp/noirify_cpp.h"
+
+
+ThrobberWidget::ThrobberWidget(QWidget* parent) : QWidget(parent) {
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAttribute(Qt::WA_TranslucentBackground);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    timer_.setInterval(80);
+    connect(&timer_, &QTimer::timeout, this, [this] {
+        angle_ = (angle_ + 30) % 360;
+        update();
+    });
+}
+
+void ThrobberWidget::start() {
+    if (!timer_.isActive()) {
+        timer_.start();
+        show();
+    }
+}
+
+void ThrobberWidget::stop() {
+    timer_.stop();
+    angle_ = 0;
+    hide();
+}
+
+void ThrobberWidget::paintEvent(QPaintEvent* event) {
+    Q_UNUSED(event);
+    if (!timer_.isActive()) return;
+
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const int spinnerSize = 48;
+    const int radius = spinnerSize / 2 - 6;
+    const QPointF center(width() / 2.0, height() / 2.0);
+
+    for (int i = 0; i < 12; ++i) {
+        p.save();
+        p.translate(center);
+        p.rotate(angle_ + i * 30);
+        const qreal opacity = qMin<qreal>(1.0, 0.15 + (static_cast<qreal>(i) / 12.0));
+        QColor c(255, 255, 255);
+        c.setAlphaF(opacity);
+        p.setBrush(c);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(radius, 0), 4, 4);
+        p.restore();
+    }
+}
 
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -48,9 +101,51 @@ void MainWindow::setupUi() {
     originalView_->setStyleSheet("QLabel{background:#222;color:#bbb;border:1px solid #444;}");
     processedView_->setStyleSheet("QLabel{background:#222;color:#bbb;border:1px solid #444;}");
 
+    processedContainer_ = new QWidget(this);
+    processedStack_ = new QStackedLayout(processedContainer_);
+    processedStack_->setStackingMode(QStackedLayout::StackAll);
+    processedStack_->setContentsMargins(0, 0, 0, 0);
+    processedStack_->addWidget(processedView_);
+    throbber_ = new ThrobberWidget(processedContainer_);
+    processedStack_->addWidget(throbber_);
+    processedStack_->setAlignment(throbber_, Qt::AlignCenter);
+    throbber_->hide();
+
+    runButton_ = new QToolButton(this);
+    runButton_->setCursor(Qt::PointingHandCursor);
+    runButton_->setIcon(QIcon(":/noirify.png"));
+    runButton_->setIconSize(QSize(96, 96));
+    runButton_->setText("Noirify");
+    runButton_->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    runButton_->setMinimumSize(120, 100);
+    runButton_->setStyleSheet(
+        "QToolButton {"
+        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2f2f2f, stop:1 #1f1f1f);"
+        "  color: #f6f6f6;"
+        "  border: 1px solid #3b3b3b;"
+        "  border-radius: 12px;"
+        "  padding: 18px 22px 14px;"
+        "  font-size: 18px;"
+        "  font-weight: 700;"
+        "  letter-spacing: 1px;"
+        "}"
+        "QToolButton:hover { background: #383838; border-color: #565656; }"
+        "QToolButton:pressed { background: #2c2c2c; }"
+    );
+    connect(runButton_, &QToolButton::clicked, this, &MainWindow::onRunAll);
+
+    auto buttonWrapper = new QWidget(this);
+    auto buttonLayout = new QVBoxLayout(buttonWrapper);
+    buttonLayout->setContentsMargins(12, 0, 12, 0);
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(runButton_, 0, Qt::AlignCenter);
+    buttonLayout->addStretch();
+
     auto views = new QHBoxLayout();
+    views->setSpacing(24);
     views->addWidget(originalView_, 1);
-    views->addWidget(processedView_, 1);
+    views->addWidget(buttonWrapper, 0);
+    views->addWidget(processedContainer_, 1);
 
     perfTable_ = new QTableWidget(3, 3, this);
     perfTable_->setHorizontalHeaderLabels({"Processor","Time (ms)","Notes"});
@@ -129,18 +224,32 @@ void MainWindow::onRunAll() {
         return;
     }
 
+    throbber_->start();
+    throbber_->raise();
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     QElapsedTimer t;
 
     t.start();
     cppImg_ = noirify_cpp::convertToGrayscale(original_);
     cppMs_  = t.elapsed();
     cppNotes_ = cppImg_.isNull() ? "C++ processor failed" : "C++ processor executed successfully";
+    refreshPerfTable();
+    pumpEvents();
 
+    asmNotes_ = "Processing...";
+    refreshPerfTable();
+    pumpEvents();
     t.restart();
     asmImg_ = cppImg_;
     asmMs_  = t.elapsed();
     asmNotes_ = "placeholder (replace with ASM processor)";
+    refreshPerfTable();
+    pumpEvents();
 
+    pyNotes_ = "Processing...";
+    refreshPerfTable();
+    pumpEvents();
     t.restart();
     pyImg_  = cppImg_;
     pyMs_   = -1;
@@ -170,6 +279,9 @@ void MainWindow::onRunAll() {
 
     setProcessed(cppImg_);
     resultSource_->setCurrentIndex(0);
+
+    throbber_->stop();
+    throbber_->hide();
 }
 
 void MainWindow::refreshPerfTable() {
@@ -185,6 +297,10 @@ void MainWindow::refreshPerfTable() {
         perfTable_->setItem(i, 1, new QTableWidgetItem(QString::number(rows[i].ms)));
         perfTable_->setItem(i, 2, new QTableWidgetItem(*rows[i].notes));
     }
+}
+
+void MainWindow::pumpEvents() {
+    QApplication::processEvents(QEventLoop::AllEvents, 16);
 }
 
 QString MainWindow::pythonScriptPath() const {
@@ -219,11 +335,16 @@ bool MainWindow::runPythonProcessor(const QString& inputPath, const QString& out
     timer.start();
     proc.start("python3", args);
 
-    if (!proc.waitForFinished(30000)) {
-        proc.kill();
-        elapsedMs = timer.elapsed();
-        notes = "Python processor timed out";
-        return false;
+    while (proc.state() == QProcess::Starting || proc.state() == QProcess::Running) {
+        if (proc.waitForFinished(50)) break;
+        QApplication::processEvents(QEventLoop::AllEvents, 16);
+        if (timer.elapsed() > 30000) {
+            proc.kill();
+            proc.waitForFinished();
+            elapsedMs = timer.elapsed();
+            notes = "Python processor timed out";
+            return false;
+        }
     }
 
     elapsedMs = timer.elapsed();

@@ -5,6 +5,25 @@
 #include <QTableWidget>
 #include <QComboBox>
 #include <QTemporaryDir>
+#include <QToolButton>
+#include <QStackedLayout>
+#include <QTimer>
+
+class ThrobberWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit ThrobberWidget(QWidget* parent = nullptr);
+    void start();
+    void stop();
+    bool isSpinning() const { return timer_.isActive(); }
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    QTimer timer_;
+    int angle_ = 0;
+};
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -30,6 +49,7 @@ private:
     void refreshPerfTable();
     QString pythonScriptPath() const;
     bool runPythonProcessor(const QString& inputPath, const QString& outputPath, qint64& elapsedMs, QString& notes);
+    void pumpEvents();
 
     QImage original_;
     QImage cppImg_, asmImg_, pyImg_;
@@ -40,6 +60,10 @@ private:
 
     QLabel* originalView_ = nullptr;
     QLabel* processedView_ = nullptr;
+    QWidget* processedContainer_ = nullptr;
+    QStackedLayout* processedStack_ = nullptr;
+    ThrobberWidget* throbber_ = nullptr;
     QTableWidget* perfTable_ = nullptr;
     QComboBox* resultSource_ = nullptr;
+    QToolButton* runButton_ = nullptr;
 };
