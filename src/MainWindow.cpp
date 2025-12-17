@@ -21,7 +21,7 @@
 #include <QEventLoop>
 #include <QToolButton>
 #include "../processors/cpp/noirify_cpp.h"
-
+#include "../processors/asm/noirify_simd.h"
 
 ThrobberWidget::ThrobberWidget(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -217,6 +217,10 @@ void MainWindow::resizeEvent(QResizeEvent* e) {
     else if (!asmImg_.isNull() && resultSource_->currentIndex()==1) setProcessed(asmImg_);
     else if (!pyImg_.isNull()  && resultSource_->currentIndex()==2) setProcessed(pyImg_);
 }
+QImage prepareImageForASM(const QImage& img) {
+    return img.convertToFormat(QImage::Format_RGBA8888);
+}
+
 
 void MainWindow::onRunAll() {
     if (original_.isNull()) {
@@ -240,10 +244,27 @@ void MainWindow::onRunAll() {
     asmNotes_ = "Processing...";
     refreshPerfTable();
     pumpEvents();
-    t.restart();
-    asmImg_ = cppImg_;
-    asmMs_  = t.elapsed();
-    asmNotes_ = "placeholder (replace with ASM processor)";
+
+    QElapsedTimer tAsm;
+    tAsm.start();
+
+    // Przygotowanie obrazu dla ASM
+    QImage asmCopy = prepareImageForASM(original_);
+    uint8_t* buffer = asmCopy.bits();
+    int width  = asmCopy.width();
+    int height = asmCopy.height();
+
+    // Ustawienie wag kolorów
+    set_rgb(77, 150, 29);
+
+    // Wywołanie ASM
+    to_grayscale(buffer, width, height);
+
+    // Zapis wyniku
+    asmImg_ = asmCopy;
+    asmMs_ = tAsm.elapsed();
+    asmNotes_ = "ASM processor executed successfully";
+
     refreshPerfTable();
     pumpEvents();
 
@@ -256,7 +277,7 @@ void MainWindow::onRunAll() {
 
     QTemporaryDir tempDir;
     if (!tempDir.isValid()) {
-        pyNotes_ = "Python processor unavailable (no temp dir)";
+        pyNotes_ = "Python3 processor unavailable (no temp dir)";
     } else {
         const QString inputPath = tempDir.filePath("noirify_input.png");
         const QString outputPath = tempDir.filePath("noirify_output.png");
@@ -333,7 +354,7 @@ bool MainWindow::runPythonProcessor(const QString& inputPath, const QString& out
 
     QElapsedTimer timer;
     timer.start();
-    proc.start("python3", args);
+    proc.start("python", args);
 
     while (proc.state() == QProcess::Starting || proc.state() == QProcess::Running) {
         if (proc.waitForFinished(50)) break;

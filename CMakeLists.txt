@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.26)
-project(Noirify LANGUAGES CXX)
+
+project(Noirify LANGUAGES CXX ASM)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,8 +18,9 @@ qt_add_executable(Noirify
         processors/cpp/noirify_cpp.cpp
         processors/cpp/noirify_cpp.h
         resources/resources.qrc
+        processors/asm/noirify_simd.S   # ← WYSTARCZY
 )
 
-target_link_libraries(Noirify PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
-
-
+target_link_libraries(Noirify
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets
+)
