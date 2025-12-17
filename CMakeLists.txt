@@ -9,6 +9,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64")
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
 qt_add_executable(Noirify

@@ -1,67 +1,73 @@
 .intel_syntax noprefix
-.global set_rgb
-.global to_grayscale
+
+.globl _set_rgb
+.globl _to_grayscale
+.globl set_rgb
+.globl to_grayscale
 
 .text
 
-# void set_rgb(uint8_t r, uint8_t g, uint8_t b)
+_set_rgb:
 set_rgb:
     ret
 
 # void to_grayscale(uint8_t* buffer, int width, int height)
-# Args: buffer = rcx, width = rdx, height = r8d
+_to_grayscale:
 to_grayscale:
     push rbx
     push r12
     push r13
     push r14
-    sub rsp, 8
 
-    mov r10, rcx        # buffer pointer
-    mov r11, rdx        # width
-    movsxd r12, r8d     # height -> 64-bit
-    mov rdx, r11
-    imul rdx, r12       # total pixels
+#if defined(__APPLE__) || defined(__linux__)
+    mov r10, rdi        # buffer pointer (ARG1)
+    mov r11, rsi        # width          (ARG2)
+    movsxd r12, edx     # height         (ARG3_32)
+#else
+    mov r10, rcx        # buffer pointer (ARG1)
+    mov r11, rdx        # width          (ARG2)
+    movsxd r12, r8d     # height         (ARG3_32)
+#endif
+
+    mov rax, r11
+    imul rax, r12
+    mov rcx, rax
 
     mov rsi, r10        # source pointer
     mov rdi, r10        # dest pointer
 
-    # Constant RGB in registry (.data was broken)
-    mov ecx, 77      # RED
-    mov r9d, 150     # GREEN
-    mov r11d, 29     # BLUE
+    mov r8d, 77
+    mov r9d, 150
+    mov r11d, 29
 
 loop_pixels:
-    cmp rdx, 0
-    je done
+    test rcx, rcx
+    jz done
 
     movzx eax, byte ptr [rsi + 0]  # R
-    imul eax, ecx                  # R*RED
-    mov r8d, eax
+    imul eax, r8d
+    mov r13d, eax
 
     movzx eax, byte ptr [rsi + 1]  # G
-    imul eax, r9d                   # G*GREEN
-    add r8d, eax
+    imul eax, r9d
+    add r13d, eax
 
     movzx eax, byte ptr [rsi + 2]  # B
-    imul eax, r11d                  # B*BLUE
-    add eax, r8d
+    imul eax, r11d
+    add eax, r13d
 
-    shr eax, 8                      # divide by 256
+    shr eax, 8                     # / 256
 
-    # Write grayscale back
     mov byte ptr [rdi + 0], al
     mov byte ptr [rdi + 1], al
     mov byte ptr [rdi + 2], al
-    # leave alpha at [rdi + 3] unchanged
 
     add rsi, 4
     add rdi, 4
-    dec rdx
+    dec rcx
     jmp loop_pixels
 
 done:
-    add rsp, 8
     pop r14
     pop r13
     pop r12

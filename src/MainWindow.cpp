@@ -78,6 +78,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 }
 
 void MainWindow::setupUi() {
+    menuBar()->setNativeMenuBar(false);
+
     auto fileMenu = menuBar()->addMenu("&File");
     auto actOpen = fileMenu->addAction("Open Image...");
     connect(actOpen, &QAction::triggered, this, &MainWindow::onOpen);
