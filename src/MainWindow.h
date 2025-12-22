@@ -39,6 +39,7 @@ private slots:
     void onOpen();
     void onRunAll();
     void onResultSourceChanged(int idx);
+    void onSaveResult();
 
 private:
     void setupUi();
@@ -55,7 +56,7 @@ private:
     QImage cppImg_, asmImg_, pyImg_;
     qint64 cppMs_ = 0, asmMs_ = 0, pyMs_ = 0;
     QString cppNotes_ = "not run yet";
-    QString asmNotes_ = "placeholder (not wired yet)";
+    QString asmNotes_ = "not run yet";
     QString pyNotes_  = "not run yet";
 
     QLabel* originalView_ = nullptr;
@@ -66,4 +67,12 @@ private:
     QTableWidget* perfTable_ = nullptr;
     QComboBox* resultSource_ = nullptr;
     QToolButton* runButton_ = nullptr;
+
+    QImage currentResultImage() const;
+    QString suggestedSavePath() const;
+    void updateSaveEnabled();
+
+    QString originalPath_;
+    QToolButton* saveButton_ = nullptr;
+    QAction* actSaveResult_ = nullptr;
 };

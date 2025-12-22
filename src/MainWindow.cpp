@@ -20,6 +20,9 @@
 #include <QApplication>
 #include <QEventLoop>
 #include <QToolButton>
+#include <QKeySequence>
+#include <QStandardPaths>
+
 #include "../processors/cpp/noirify_cpp.h"
 #include "../processors/asm/noirify_simd.h"
 
@@ -84,12 +87,36 @@ void MainWindow::setupUi() {
     auto actOpen = fileMenu->addAction("Open Image...");
     connect(actOpen, &QAction::triggered, this, &MainWindow::onOpen);
 
+    actSaveResult_ = fileMenu->addAction("Save Result...");
+    actSaveResult_->setShortcut(QKeySequence::Save);
+    actSaveResult_->setEnabled(false);
+    connect(actSaveResult_, &QAction::triggered, this, &MainWindow::onSaveResult);
+
+    fileMenu->addSeparator();
+
+
     auto runMenu  = menuBar()->addMenu("&Run");
     auto actRunAll= runMenu->addAction("Run All (C++ / ASM / Python)");
     connect(actRunAll, &QAction::triggered, this, &MainWindow::onRunAll);
 
     resultSource_ = new QComboBox(this);
     resultSource_->addItems({"C++", "ASM", "Python", "Fastest"});
+    resultSource_->setStyleSheet(
+        "QComboBox {"
+        "  color: #f6f6f6;"
+        "  background: #222;"
+        "  border: 1px solid #444;"
+        "  border-radius: 6px;"
+        "  padding: 4px 10px;"
+        "}"
+        "QComboBox QAbstractItemView {"
+        "  color: #f6f6f6;"
+        "  background: #222;"
+        "  selection-background-color: #444;"
+        "  border: 1px solid #444;"
+        "}"
+    );
+
     connect(resultSource_, &QComboBox::currentIndexChanged,
             this, &MainWindow::onResultSourceChanged);
     menuBar()->setCornerWidget(resultSource_, Qt::TopRightCorner);
@@ -139,9 +166,37 @@ void MainWindow::setupUi() {
     auto buttonWrapper = new QWidget(this);
     auto buttonLayout = new QVBoxLayout(buttonWrapper);
     buttonLayout->setContentsMargins(12, 0, 12, 0);
+    // buttonLayout->addStretch();
+    // buttonLayout->addWidget(runButton_, 0, Qt::AlignCenter);
+    // buttonLayout->addStretch();
+    saveButton_ = new QToolButton(this);
+    saveButton_->setCursor(Qt::PointingHandCursor);
+    saveButton_->setText("Save Result");
+    saveButton_->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    saveButton_->setIcon(QIcon::fromTheme("document-save"));
+    saveButton_->setIconSize(QSize(36, 36));
+    saveButton_->setMinimumSize(120, 90);
+    saveButton_->setEnabled(false); // ✅ 기본 비활성
+    saveButton_->setStyleSheet(
+        "QToolButton {"
+        "  background: #1f1f1f;"
+        "  color: #f6f6f6;"
+        "  border: 1px solid #3b3b3b;"
+        "  border-radius: 12px;"
+        "  padding: 12px 18px 10px;"
+        "  font-size: 14px;"
+        "  font-weight: 600;"
+        "}"
+        "QToolButton:hover { background: #2a2a2a; border-color: #565656; }"
+        "QToolButton:pressed { background: #181818; }"
+    );
+    connect(saveButton_, &QToolButton::clicked, this, &MainWindow::onSaveResult);
     buttonLayout->addStretch();
     buttonLayout->addWidget(runButton_, 0, Qt::AlignCenter);
+    buttonLayout->addSpacing(12);
+    buttonLayout->addWidget(saveButton_, 0, Qt::AlignCenter);
     buttonLayout->addStretch();
+
 
     auto views = new QHBoxLayout();
     views->setSpacing(24);
@@ -183,6 +238,24 @@ void MainWindow::loadImageFile(const QString& path) {
     }
     setOriginal(img);
     processedView_->setText("Ready. Run All to process.");
+
+    originalPath_ = path;
+
+    cppImg_ = QImage();
+    asmImg_ = QImage();
+    pyImg_  = QImage();
+
+    cppMs_ = 0; asmMs_ = 0; pyMs_ = 0;
+    cppNotes_ = "not run yet";
+    asmNotes_ = "not run yet";
+    pyNotes_  = "not run yet";
+
+    processedView_->setPixmap(QPixmap());
+    processedView_->setText("Ready. Run All to process.");
+
+    refreshPerfTable();
+    updateSaveEnabled();
+
 }
 
 void MainWindow::setOriginal(const QImage& img) {
@@ -305,6 +378,9 @@ void MainWindow::onRunAll() {
 
     throbber_->stop();
     throbber_->hide();
+
+    updateSaveEnabled();
+
 }
 
 void MainWindow::refreshPerfTable() {
@@ -403,5 +479,99 @@ void MainWindow::onResultSourceChanged(int idx) {
             break;
         }
         default: break;
+    }
+    updateSaveEnabled();
+}
+
+QImage MainWindow::currentResultImage() const {
+    const int idx = resultSource_ ? resultSource_->currentIndex() : 0;
+
+    switch (idx) {
+        case 0: return cppImg_;
+        case 1: return asmImg_;
+        case 2: return pyImg_;
+        case 3: { // Fastest
+            struct Cand { qint64 ms; QImage img; };
+            QList<Cand> cands;
+
+            if (!cppImg_.isNull() && cppMs_ > 0) cands.push_back({cppMs_, cppImg_});
+            if (!asmImg_.isNull() && asmMs_ > 0) cands.push_back({asmMs_, asmImg_});
+            if (!pyImg_.isNull()  && pyMs_  > 0) cands.push_back({pyMs_,  pyImg_});
+
+            if (cands.isEmpty()) {
+                // ms가 0이거나 아직 정확히 없을 때도 "있는 이미지"라도 반환
+                if (!cppImg_.isNull()) return cppImg_;
+                if (!asmImg_.isNull()) return asmImg_;
+                if (!pyImg_.isNull())  return pyImg_;
+                return {};
+            }
+
+            std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b){
+                return a.ms < b.ms;
+            });
+            return cands.first().img;
+        }
+        default:
+            return cppImg_;
+    }
+}
+
+QString MainWindow::suggestedSavePath() const {
+    const QString baseDir = !originalPath_.isEmpty()
+        ? QFileInfo(originalPath_).absolutePath()
+        : QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+
+    const QString baseName = !originalPath_.isEmpty()
+        ? QFileInfo(originalPath_).completeBaseName()
+        : QStringLiteral("noirify");
+
+    QString tag = "cpp";
+    switch (resultSource_ ? resultSource_->currentIndex() : 0) {
+        case 0: tag = "cpp"; break;
+        case 1: tag = "asm"; break;
+        case 2: tag = "py";  break;
+        case 3: tag = "fastest"; break;
+    }
+
+    return QDir(baseDir).filePath(QString("%1_noirify_%2.png").arg(baseName, tag));
+}
+
+void MainWindow::updateSaveEnabled() {
+    const bool canSave = !currentResultImage().isNull();
+
+    if (saveButton_) saveButton_->setEnabled(canSave);
+    if (actSaveResult_) actSaveResult_->setEnabled(canSave);
+
+    if (!canSave && saveButton_) {
+        saveButton_->setToolTip("Run All first to generate a result image.");
+    } else if (saveButton_) {
+        saveButton_->setToolTip("Save the currently selected result.");
+    }
+}
+
+void MainWindow::onSaveResult() {
+    const QImage img = currentResultImage();
+    if (img.isNull()) {
+        QMessageBox::information(this, "No result", "No processed result to save.\nRun All first.");
+        updateSaveEnabled();
+        return;
+    }
+
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        "Save Result",
+        suggestedSavePath(),
+        "PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp)"
+    );
+
+    if (path.isEmpty()) return;
+
+    // 확장자 없으면 png로
+    if (QFileInfo(path).suffix().isEmpty()) {
+        path += ".png";
+    }
+
+    if (!img.save(path)) {
+        QMessageBox::warning(this, "Save failed", "Could not save file:\n" + path);
     }
 }
